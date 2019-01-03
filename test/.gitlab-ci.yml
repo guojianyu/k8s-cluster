@@ -1,0 +1,57 @@
+stages:
+  - check
+  - build
+  - save
+  - upload
+
+variables:
+  K8S_MASTER_IP: "172.16.116.2"  #k8s master 的ip
+  K8S_MASTER_USER: "root"  #k8s  master 的用户名
+  K8S_MASTER_PASSWD: "public"  #k8s master 的用户密码
+  K8S_MASTER_YAM_NAME: "gykubernetes-dashboard.yaml" #根目录的yaml文件
+  IMAGES_REGISTRY_IP_PORT:  "172.16.116.1:5008" #镜像仓库的地址
+  UPLOAD_IMAGE_REP:  "true"  #是否上传镜像仓库，true :上传镜像仓库 false:传递压缩文件 all：上传镜像仓库和传输压缩文件
+  #以上用于ssh连接k8s集群
+  BASE_IMAGE: "registry_base:v2.6.2" #项目依赖的基础镜像
+  CHECK_FILE: "package.json" #该文件发生变化将更新BASE_IMAGE
+
+before_script:
+  - source /etc/profile
+
+check_job:
+  image: initbase:v1  #检查基础镜像所依赖的镜像
+  stage: check
+  script:
+    - ls
+    #- python2 built_image.py "check" $BASH_IMAGE  $CI_PROJECT_NAME $CHECK_FILE #检查是否需要生成基础镜像或者更新基础镜像，如果生成或者更新镜像将抛出异常
+  retry: 1 #重试1次
+
+build_job:
+  only:
+  - branches
+  image: $BASE_IMAGE
+  stage: build
+  script:
+  - echo "Release build..."
+  - ls
+  - sh build.sh $(git rev-parse --short HEAD)
+  - docker images
+  - git rev-parse --short HEAD
+  tags:
+    - docker
+
+save_job:
+  only:
+  - branches
+  image: $BASE_IMAGE
+  stage: save
+  script:
+    - python2 built_image.py "save" $CI_PROJECT_NAME  $(git rev-parse --short HEAD)  $UPLOAD_IMAGE_REP    #(args项目名称)  调用打包镜像脚本
+
+upload_job:
+  only:
+    - branches
+  image: $BASE_IMAGE
+  stage: upload
+  script:
+    - python2 built_image.py "upload" $CI_PROJECT_NAME  $(git rev-parse --short HEAD)  $UPLOAD_IMAGE_REP $K8S_MASTER_IP $K8S_MASTER_USER  $K8S_MASTER_PASSWD $IMAGES_REGISTRY_IP_PORT  $K8S_MASTER_YAM_NAME #(args项目名称)  调用打包镜像脚本
